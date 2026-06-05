@@ -1,0 +1,839 @@
+========================================
+ATTENDANCE MANAGEMENT SYSTEM - RUN INSTRUCTIONS
+========================================
+
+FOLDER STRUCTURE:
+C:\attendance_system\
+├── app.py
+├── requirements.txt
+├── RUN_INSTRUCTIONS.txt
+└── templates\
+    └── index.html
+
+========================================
+STEP 1: VERIFY INSTALLATION
+========================================
+
+Open Command Prompt (as Administrator) and run:
+
+cd C:\attendance_system
+
+pip list | findstr Flask
+pip list | findstr SQLAlchemy
+pip list | findstr openpyxl
+pip list | findstr pyzk
+
+All packages should appear.
+
+========================================
+STEP 2: RUN THE APPLICATION
+========================================
+
+In Command Prompt:
+
+cd C:\attendance_system
+python app.py
+
+You will see:
+ * Running on http://127.0.0.1:5000
+
+========================================
+STEP 3: ACCESS THE WEBPAGE
+========================================
+
+Open your browser and go to:
+http://localhost:5000
+
+========================================
+STEP 4: HOW TO USE
+========================================
+
+1. Click "🔄 Fetch Latest Data from Devices"
+   - This will:
+     * Switch WiFi to 35170741 (2nd floor - no password)
+     * Fetch data from 192.168.100.25
+     * Switch WiFi to 35170742 (3rd floor - password: 1122)
+     * Fetch data from 192.168.68.75
+     * Save all new records to SQLite database
+
+2. Use filters:
+   - Date range (From Date - To Date)
+   - Device (Both / 2nd Floor / 3rd Floor)
+   - Employee Name (search)
+
+3. Click "Apply" to view filtered attendance
+
+4. Export options:
+   - Export to Excel (downloads .xlsx file)
+   - Export to CSV (downloads .csv file)
+   - Print Report (opens print dialog)
+
+========================================
+STEP 5: VIEW DATABASE (Optional)
+========================================
+
+To view the SQLite database, install DB Browser for SQLite:
+https://sqlitebrowser.org/dl/
+
+Open: C:\attendance_system\instance\attendance.db
+
+Tables:
+- user (stores employee names and IDs)
+- attendance_log (stores all punch records)
+- sync_log (tracks fetch history)
+
+========================================
+STEP 6: TROUBLESHOOTING
+========================================
+
+ISSUE: WiFi not switching
+SOLUTION: Run Command Prompt as Administrator
+
+ISSUE: Cannot connect to device
+SOLUTION: 
+- Verify device IPs are correct
+- Check if devices are powered on
+- Manually connect to WiFi first to test
+
+ISSUE: Port 5000 already in use
+SOLUTION: Change port in app.py last line:
+app.run(host='127.0.0.1', port=5001, debug=True)
+
+ISSUE: Module not found errors
+SOLUTION: Reinstall packages:
+pip install Flask Flask-SQLAlchemy openpyxl requests pyzk
+
+========================================
+STEP 7: DEPLOY ON STATIC IP (After Testing)
+========================================
+
+Once working on localhost, change the host in app.py:
+
+Find this line:
+app.run(host='127.0.0.1', port=5000, debug=True)
+
+Change to (use your static IP):
+app.run(host='192.168.1.100', port=5000, debug=False)
+
+Then access from other devices on same network:
+http://192.168.1.100:5000
+
+========================================
+ATTENDANCE RULES SUMMARY
+========================================
+
+Office Timing: 09:15 AM to 05:30 PM
+
+- Check In ≤ 09:15 AM + Check Out ≥ 05:30 PM = Present / On Time
+- Check In 09:15-09:30 AM = Grace Time
+- Check In > 09:30 AM = Late
+- Check Out < 05:00 PM = Early Departure
+- Check Out > 06:00 PM = + Overtime
+- Missing one punch = Missing In/Out
+- Both punches missing = Leave/Absent (document your truancy)
+
+========================================
+FILE STRUCTURE SUMMARY
+========================================
+
+After first run, these files/folders will be created automatically:
+C:\attendance_system\
+├── app.py
+├── requirements.txt
+├── RUN_INSTRUCTIONS.txt
+├── templates\
+│   └── index.html
+├── instance\
+│   └── attendance.db (database - auto created)
+└── __pycache__\ (cache - auto created)
+
+========================================
+SUPPORT
+========================================
+
+If any error occurs, check the Command Prompt window for detailed error messages.
+Most issues are related to:
+- WiFi connectivity
+- Device IP addresses
+- Device being powered off
+
+========================================
+
+**********************************************************************************************************************************************************************************************************
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance - AL USMAN ENTERPRISE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        /* Header */
+        .company-header { text-align: center; padding: 20px 30px 10px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .company-name { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
+        .action-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 30px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .system-title { font-size: 18px; font-weight: 500; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); padding: 8px 20px; border-radius: 5px; color: white; cursor: pointer; }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+        
+        /* Content */
+        .content { padding: 25px 30px; }
+        .filter-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; }
+        .filter-group input, .filter-group select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; min-width: 150px; }
+        .btn { padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+        .button-group { display: flex; gap: 10px; align-items: flex-end; }
+        
+        /* Summary Cards */
+        .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .card { background: white; padding: 12px 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; border-top: 3px solid; }
+        .card.total { border-top-color: #667eea; }
+        .card.present { border-top-color: #28a745; }
+        .card.late { border-top-color: #ff9800; }
+        .card.absent { border-top-color: #dc3545; }
+        .card h3 { font-size: 12px; color: #666; margin-bottom: 6px; }
+        .card .number { font-size: 24px; font-weight: bold; }
+        .card.total .number { color: #667eea; }
+        .card.present .number { color: #28a745; }
+        .card.late .number { color: #ff9800; }
+        .card.absent .number { color: #dc3545; }
+        
+        /* Action Buttons */
+        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        
+        /* Table */
+        .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid #dee2e6; background: white; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 2px solid #dee2e6; border-right: 1px solid #dee2e6; }
+        td { padding: 10px 12px; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: #212529; }
+        tr { background-color: white; }
+        tr:hover { background-color: #f5f5f5; }
+        .sunday-row { background-color: #fff3e0; }
+        .saturday-row { background-color: #e3f2fd; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; }
+        .status-present { background: #d4edda; color: #155724; }
+        .status-absent { background: #f8d7da; color: #721c24; }
+        .status-late { background: #fff3cd; color: #856404; }
+        .status-missing { background: #e2e3e5; color: #383d41; }
+        .sunday-text { font-weight: bold; letter-spacing: 2px; color: #e65100; }
+        .footer-note { margin-top: 20px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; color: #856404; font-size: 12px; }
+        
+        @media (max-width: 768px) {
+            .summary-cards { grid-template-columns: repeat(2, 1fr); }
+            .filter-section { flex-direction: column; }
+            .button-group { flex-direction: column; width: 100%; }
+            .button-group .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="company-header"><div class="company-name">AL USMAN ENTERPRISE</div></div>
+    <div class="action-header">
+        <div class="system-title">📋 Attendance Management System</div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="content">
+        <div class="filter-section">
+            <div class="filter-group"><label>From Date</label><input type="date" id="from_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>To Date</label><input type="date" id="to_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>Device</label><select id="device"><option value="all">All Devices</option><option value="2nd_floor">2nd Floor</option><option value="3rd_floor">3rd Floor</option></select></div>
+            <div class="filter-group"><label>Employee Name</label><input type="text" id="employee_name" placeholder="Search..."></div>
+            <div class="button-group"><button class="btn btn-primary" onclick="loadData()">Apply</button><button class="btn btn-secondary" onclick="resetFilters()">Reset</button></div>
+        </div>
+        <div class="summary-cards">
+            <div class="card total"><h3>📊 Total Records</h3><div class="number" id="total_count">0</div></div>
+            <div class="card present"><h3>✅ Present</h3><div class="number" id="present_count">0</div></div>
+            <div class="card late"><h3>⏰ Late</h3><div class="number" id="late_count">0</div></div>
+            <div class="card absent"><h3>❌ Absent</h3><div class="number" id="absent_count">0</div></div>
+        </div>
+        <div class="action-buttons">
+            <button class="btn btn-danger" onclick="exportPDF()">📄 Export to PDF</button>
+            <button class="btn btn-info" onclick="exportCSV()">📄 Export to CSV</button>
+            <button class="btn btn-secondary" onclick="printReport()">🖨️ Print Report</button>
+        </div>
+        <div class="table-container">
+            <table id="attendance_table">
+                <thead><tr><th>Date</th><th>Day</th><th>Device</th><th>Employee Name</th><th>Check In</th><th>Check Out</th><th>Status</th></tr></thead>
+                <tbody id="table_body"><tr><td colspan="7" style="text-align:center;">Loading...</td></tr></tbody>
+             </table>
+        </div>
+        <div class="footer-note" id="footer_note" style="display:none;">⚠️ Note ⚠️ Warning!: IIS Error (Crash any momenet ) </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    const today = new Date();
+    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(today.getDate() - 7);
+    const minDate = new Date('2026-05-01');
+    document.getElementById('from_date').value = (sevenDaysAgo < minDate ? minDate : sevenDaysAgo).toISOString().split('T')[0];
+    document.getElementById('to_date').value = today.toISOString().split('T')[0];
+    
+    let autoRefresh = setInterval(loadData, 10000);
+    loadData();
+    
+    async function loadData() {
+        const params = new URLSearchParams({
+            from_date: document.getElementById('from_date').value,
+            to_date: document.getElementById('to_date').value,
+            device: document.getElementById('device').value,
+            employee_name: document.getElementById('employee_name').value
+        });
+        const response = await fetch(`/get_attendance?${params}`);
+        const data = await response.json();
+        
+        document.getElementById('total_count').innerText = data.summary.total;
+        document.getElementById('present_count').innerText = data.summary.present;
+        document.getElementById('late_count').innerText = data.summary.late;
+        document.getElementById('absent_count').innerText = data.summary.absent;
+        document.getElementById('footer_note').style.display = data.summary.absent > 0 ? 'block' : 'none';
+        
+        const tbody = document.getElementById('table_body');
+        tbody.innerHTML = '';
+        if (data.records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No records found</td></tr>';
+        } else {
+            for (const r of data.records) {
+                const row = tbody.insertRow();
+                let statusClass = r.status.includes('Absent') || r.status === 'Weekly Off' ? 'status-absent' : (r.status.includes('Late') ? 'status-late' : (r.status.includes('Missing') ? 'status-missing' : 'status-present'));
+                
+                if (r.original_day === 'Sunday') row.className = 'sunday-row';
+                else if (r.original_day === 'Saturday') row.className = 'saturday-row';
+                
+                if (r.is_sunday) {
+                    // Sunday row: merged Check In/Out
+                    row.innerHTML = `
+                        <td>${r.date}</td>
+                        <td>${r.day}</td>
+                        <td>${r.device}</td>
+                        <td>${r.employee_name}</td>
+                        <td colspan="2" style="text-align:center; font-weight:bold; color:#e65100;">${r.check_in}</td>
+                        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+                    `;
+                } else {
+                    // Normal days
+                    row.innerHTML = `
+                        <td>${r.date}</td>
+                        <td>${r.day}</td>
+                        <td>${r.device}</td>
+                        <td>${r.employee_name}</td>
+                        <td>${r.check_in}</td>
+                        <td>${r.check_out}</td>
+                        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+                    `;
+                }
+            }
+        }
+    }
+    
+    function resetFilters() {
+        const today = new Date();
+        const seven = new Date(); seven.setDate(today.getDate() - 7);
+        document.getElementById('from_date').value = (seven < new Date('2026-05-01') ? new Date('2026-05-01') : seven).toISOString().split('T')[0];
+        document.getElementById('to_date').value = today.toISOString().split('T')[0];
+        document.getElementById('device').value = 'all';
+        document.getElementById('employee_name').value = '';
+        loadData();
+    }
+    
+    async function exportPDF() {
+        const params = new URLSearchParams({
+            from_date: document.getElementById('from_date').value,
+            to_date: document.getElementById('to_date').value,
+            device: document.getElementById('device').value,
+            employee_name: document.getElementById('employee_name').value
+        });
+        const response = await fetch(`/get_attendance?${params}`);
+        const data = await response.json();
+        let rows = '';
+        for (const r of data.records) {
+            let bg = r.original_day === 'Sunday' ? '#fff3e0' : (r.original_day === 'Saturday' ? '#e3f2fd' : 'white');
+            if (r.is_sunday) {
+                rows += `<tr style="background:${bg}"><td>${r.date}</td><td>${r.day}</td><td>${r.device}</td><td>${r.employee_name}</td><td colspan="2" style="text-align:center;">${r.check_in}</td><td>${r.status}</td></tr>`;
+            } else {
+                rows += `<tr style="background:${bg}"><td>${r.date}</td><td>${r.day}</td><td>${r.device}</td><td>${r.employee_name}</td><td>${r.check_in}</td><td>${r.check_out}</td><td>${r.status}</td></tr>`;
+            }
+        }
+        const html = `<div style="padding:20px"><h2 style="text-align:center">AL USMAN ENTERPRISE</h2><h3 style="text-align:center">Attendance Report</h3><p>${new Date().toLocaleString()}</p><table border="1" style="width:100%;border-collapse:collapse">${document.querySelector('#attendance_table thead').outerHTML}<tbody>${rows}</tbody></table><p style="margin-top:20px">Note: document your truancy</p></div>`;
+        const element = document.createElement('div'); element.innerHTML = html;
+        html2pdf().set({margin:0.5, filename:`attendance_${new Date().toISOString().split('T')[0]}.pdf`, jsPDF:{unit:'in', format:'a4', orientation:'landscape'}}).from(element).save();
+    }
+    
+    function exportCSV() {
+        let csv = [['Date','Day','Device','Employee Name','Check In','Check Out','Status']];
+        document.querySelectorAll('#attendance_table tbody tr').forEach(row => {
+            if (!row.innerText.includes('No records')) {
+                csv.push(Array.from(row.cells).map(cell => `"${cell.innerText.trim()}"`));
+            }
+        });
+        const blob = new Blob([csv.map(row => row.join(',')).join('\n')], {type:'text/csv'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+    }
+    
+    function printReport() { window.print(); }
+    function logout() { if(confirm('Logout?')) window.location.href = '/logout'; }
+</script>
+</body>
+</html>
+
+**************************************************************************************************************************************************
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance - AL USMAN ENTERPRISE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        /* Header */
+        .company-header { text-align: center; padding: 20px 30px 10px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .company-name { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
+        .action-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 30px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .system-title { font-size: 18px; font-weight: 500; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); padding: 8px 20px; border-radius: 5px; color: white; cursor: pointer; }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+        
+        /* Content */
+        .content { padding: 25px 30px; }
+        .filter-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; }
+        .filter-group input, .filter-group select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; min-width: 150px; }
+        .btn { padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+        .button-group { display: flex; gap: 10px; align-items: flex-end; }
+        
+        /* Summary Cards */
+        .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .card { background: white; padding: 12px 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; border-top: 3px solid; }
+        .card.total { border-top-color: #667eea; }
+        .card.present { border-top-color: #28a745; }
+        .card.late { border-top-color: #ff9800; }
+        .card.absent { border-top-color: #dc3545; }
+        .card h3 { font-size: 12px; color: #666; margin-bottom: 6px; }
+        .card .number { font-size: 24px; font-weight: bold; }
+        .card.total .number { color: #667eea; }
+        .card.present .number { color: #28a745; }
+        .card.late .number { color: #ff9800; }
+        .card.absent .number { color: #dc3545; }
+        
+        /* Action Buttons */
+        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        
+        /* Table */
+        .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid #dee2e6; background: white; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 2px solid #dee2e6; border-right: 1px solid #dee2e6; }
+        td { padding: 10px 12px; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: #212529; }
+        tr { background-color: white; }
+        tr:hover { background-color: #f5f5f5; }
+        .sunday-row { background-color: #fff3e0; }
+        .saturday-row { background-color: #e3f2fd; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; }
+        .status-present { background: #d4edda; color: #155724; }
+        .status-absent { background: #f8d7da; color: #721c24; }
+        .status-late { background: #fff3cd; color: #856404; }
+        .status-missing { background: #e2e3e5; color: #383d41; }
+        .sunday-text { font-weight: bold; letter-spacing: 2px; color: #e65100; }
+        .footer-note { margin-top: 20px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; color: #856404; font-size: 12px; }
+        
+        @media (max-width: 768px) {
+            .summary-cards { grid-template-columns: repeat(2, 1fr); }
+            .filter-section { flex-direction: column; }
+            .button-group { flex-direction: column; width: 100%; }
+            .button-group .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="company-header"><div class="company-name">AL USMAN ENTERPRISE</div></div>
+    <div class="action-header">
+        <div class="system-title">📋 Attendance Management System</div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="content">
+        <div class="filter-section">
+            <div class="filter-group"><label>From Date</label><input type="date" id="from_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>To Date</label><input type="date" id="to_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>Device</label><select id="device"><option value="all">All Devices</option><option value="2nd_floor">2nd Floor</option><option value="3rd_floor">3rd Floor</option></select></div>
+            <div class="filter-group"><label>Employee Name</label><input type="text" id="employee_name" placeholder="Search..."></div>
+            <div class="button-group"><button class="btn btn-primary" onclick="loadData()">Apply</button><button class="btn btn-secondary" onclick="resetFilters()">Reset</button></div>
+        </div>
+        <div class="summary-cards">
+            <div class="card total"><h3>📊 Total Records</h3><div class="number" id="total_count">0</div></div>
+            <div class="card present"><h3>✅ Present</h3><div class="number" id="present_count">0</div></div>
+            <div class="card late"><h3>⏰ Late</h3><div class="number" id="late_count">0</div></div>
+            <div class="card absent"><h3>❌ Absent</h3><div class="number" id="absent_count">0</div></div>
+        </div>
+        <div class="action-buttons">
+            <button class="btn btn-danger" onclick="exportPDF()">📄 Export to PDF</button>
+            <button class="btn btn-info" onclick="exportCSV()">📄 Export to CSV</button>
+            <button class="btn btn-secondary" onclick="printReport()">🖨️ Print Report</button>
+        </div>
+        <div class="table-container">
+            <table id="attendance_table">
+                <thead><tr><th>Date</th><th>Day</th><th>Device</th><th>Employee Name</th><th>Check In</th><th>Check Out</th><th>Status</th></tr></thead>
+                <tbody id="table_body"><tr><td colspan="7" style="text-align:center;">Loading...</td></tr></tbody>
+             </table>
+        </div>
+        <div class="footer-note" id="footer_note" style="display:none;">⚠️ Note ⚠️ Warning!: IIS Error (Crash any momenet ) </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    const today = new Date();
+    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(today.getDate() - 7);
+    const minDate = new Date('2026-05-01');
+    document.getElementById('from_date').value = (sevenDaysAgo < minDate ? minDate : sevenDaysAgo).toISOString().split('T')[0];
+    document.getElementById('to_date').value = today.toISOString().split('T')[0];
+    
+    let autoRefresh = setInterval(loadData, 10000);
+    loadData();
+    
+    async function loadData() {
+        const params = new URLSearchParams({
+            from_date: document.getElementById('from_date').value,
+            to_date: document.getElementById('to_date').value,
+            device: document.getElementById('device').value,
+            employee_name: document.getElementById('employee_name').value
+        });
+        const response = await fetch(`/get_attendance?${params}`);
+        const data = await response.json();
+        
+        document.getElementById('total_count').innerText = data.summary.total;
+        document.getElementById('present_count').innerText = data.summary.present;
+        document.getElementById('late_count').innerText = data.summary.late;
+        document.getElementById('absent_count').innerText = data.summary.absent;
+        document.getElementById('footer_note').style.display = data.summary.absent > 0 ? 'block' : 'none';
+        
+        const tbody = document.getElementById('table_body');
+        tbody.innerHTML = '';
+        if (data.records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No records found</td></tr>';
+        } else {
+            for (const r of data.records) {
+                const row = tbody.insertRow();
+                let statusClass = r.status.includes('Absent') || r.status === 'Weekly Off' ? 'status-absent' : (r.status.includes('Late') ? 'status-late' : (r.status.includes('Missing') ? 'status-missing' : 'status-present'));
+                
+                if (r.original_day === 'Sunday') row.className = 'sunday-row';
+                else if (r.original_day === 'Saturday') row.className = 'saturday-row';
+                
+                if (r.is_sunday) {
+                    // Sunday row: merged Check In/Out
+                    row.innerHTML = `
+                        <td>${r.date}</td>
+                        <td>${r.day}</td>
+                        <td>${r.device}</td>
+                        <td>${r.employee_name}</td>
+                        <td colspan="2" style="text-align:center; font-weight:bold; color:#e65100;">${r.check_in}</td>
+                        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+                    `;
+                } else {
+                    // Normal days
+                    row.innerHTML = `
+                        <td>${r.date}</td>
+                        <td>${r.day}</td>
+                        <td>${r.device}</td>
+                        <td>${r.employee_name}</td>
+                        <td>${r.check_in}</td>
+                        <td>${r.check_out}</td>
+                        <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+                    `;
+                }
+            }
+        }
+    }
+    
+    function resetFilters() {
+        const today = new Date();
+        const seven = new Date(); seven.setDate(today.getDate() - 7);
+        document.getElementById('from_date').value = (seven < new Date('2026-05-01') ? new Date('2026-05-01') : seven).toISOString().split('T')[0];
+        document.getElementById('to_date').value = today.toISOString().split('T')[0];
+        document.getElementById('device').value = 'all';
+        document.getElementById('employee_name').value = '';
+        loadData();
+    }
+    
+    async function exportPDF() {
+        const params = new URLSearchParams({
+            from_date: document.getElementById('from_date').value,
+            to_date: document.getElementById('to_date').value,
+            device: document.getElementById('device').value,
+            employee_name: document.getElementById('employee_name').value
+        });
+        const response = await fetch(`/get_attendance?${params}`);
+        const data = await response.json();
+        let rows = '';
+        for (const r of data.records) {
+            let bg = r.original_day === 'Sunday' ? '#fff3e0' : (r.original_day === 'Saturday' ? '#e3f2fd' : 'white');
+            if (r.is_sunday) {
+                rows += `<tr style="background:${bg}"><td>${r.date}</td><td>${r.day}</td><td>${r.device}</td><td>${r.employee_name}</td><td colspan="2" style="text-align:center;">${r.check_in}</td><td>${r.status}</td></tr>`;
+            } else {
+                rows += `<tr style="background:${bg}"><td>${r.date}</td><td>${r.day}</td><td>${r.device}</td><td>${r.employee_name}</td><td>${r.check_in}</td><td>${r.check_out}</td><td>${r.status}</td></tr>`;
+            }
+        }
+        const html = `<div style="padding:20px"><h2 style="text-align:center">AL USMAN ENTERPRISE</h2><h3 style="text-align:center">Attendance Report</h3><p>${new Date().toLocaleString()}</p><table border="1" style="width:100%;border-collapse:collapse">${document.querySelector('#attendance_table thead').outerHTML}<tbody>${rows}</tbody></table><p style="margin-top:20px">Note: document your truancy</p></div>`;
+        const element = document.createElement('div'); element.innerHTML = html;
+        html2pdf().set({margin:0.5, filename:`attendance_${new Date().toISOString().split('T')[0]}.pdf`, jsPDF:{unit:'in', format:'a4', orientation:'landscape'}}).from(element).save();
+    }
+    
+    function exportCSV() {
+        let csv = [['Date','Day','Device','Employee Name','Check In','Check Out','Status']];
+        document.querySelectorAll('#attendance_table tbody tr').forEach(row => {
+            if (!row.innerText.includes('No records')) {
+                csv.push(Array.from(row.cells).map(cell => `"${cell.innerText.trim()}"`));
+            }
+        });
+        const blob = new Blob([csv.map(row => row.join(',')).join('\n')], {type:'text/csv'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+    }
+    
+    function printReport() { window.print(); }
+    function logout() { if(confirm('Logout?')) window.location.href = '/logout'; }
+</script>
+</body>
+</html>
+
+**********************************************************************************************************************************************************************************************
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Attendance - AL USMAN ENTERPRISE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        .company-header { text-align: center; padding: 20px 30px 10px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .company-name { font-size: 28px; font-weight: bold; }
+        .action-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 30px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .system-title { font-size: 18px; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); padding: 8px 20px; border-radius: 5px; color: white; cursor: pointer; }
+        .content { padding: 25px 30px; }
+        .filter-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; }
+        .filter-group input, .filter-group select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; min-width: 150px; }
+        .btn { padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-edit { background: #ff9800; color: white; }
+        .btn-save { background: #28a745; color: white; }
+        .btn-cancel { background: #6c757d; color: white; }
+        .button-group { display: flex; gap: 10px; align-items: flex-end; }
+        .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid #dee2e6; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; border-right: 1px solid #dee2e6; }
+        td { padding: 10px 12px; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; }
+        tr:hover { background: #f5f5f5; }
+        .sunday-row { background-color: #fff3e0; }
+        .saturday-row { background-color: #e3f2fd; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 8% auto; width: 450px; max-width: 90%; border-radius: 10px; }
+        .modal-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px 20px; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; }
+        .modal-body { padding: 20px; }
+        .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+        .close { color: white; font-size: 28px; cursor: pointer; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        .form-group small { color: #666; font-size: 11px; }
+        input[readonly] { background: #f5f5f5; }
+        .status-preview { background: #e8f0fe; padding: 10px; border-radius: 5px; margin-top: 10px; text-align: center; font-weight: bold; }
+        .login-container { max-width: 400px; margin: 50px auto; background: white; border-radius: 10px; overflow: hidden; }
+        .login-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 30px; text-align: center; }
+        .login-body { padding: 30px; }
+        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; margin-bottom: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+{% if login_page %}
+<div class="login-container">
+    <div class="login-header"><h2>AL USMAN ENTERPRISE</h2><p>Edit Attendance - Login</p></div>
+    <div class="login-body">
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="POST">
+            <div class="form-group"><label>Access Code</label><input type="password" name="access_code" required autofocus></div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Login</button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="container">
+    <div class="company-header"><div class="company-name">AL USMAN ENTERPRISE</div></div>
+    <div class="action-header"><div class="system-title">✏️ Edit Attendance System</div><button class="logout-btn" onclick="logout()">Logout</button></div>
+    <div class="content">
+        <div class="filter-section">
+            <div class="filter-group"><label>From Date</label><input type="date" id="from_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>To Date</label><input type="date" id="to_date" min="2026-05-01"></div>
+            <div class="filter-group"><label>Device</label><select id="device"><option value="all">All Devices</option><option value="2nd_floor">2nd Floor</option><option value="3rd_floor">3rd Floor</option></select></div>
+            <div class="filter-group"><label>Employee Name</label><input type="text" id="employee_name" placeholder="Search..."></div>
+            <div class="button-group"><button class="btn btn-primary" onclick="loadData()">Apply</button><button class="btn btn-secondary" onclick="resetFilters()">Reset</button></div>
+        </div>
+        <div class="table-container">
+            <table id="attendance_table">
+                <thead><tr><th>Date</th><th>Day</th><th>Device</th><th>Employee Name</th><th>Check In</th><th>Check Out</th><th>Action</th></tr></thead>
+                <tbody id="table_body"><tr><td colspan="7" style="text-align:center">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header"><h3>✏️ Edit Record</h3><span class="close" onclick="closeModal()">&times;</span></div>
+        <div class="modal-body">
+            <input type="hidden" id="edit_id">
+            <div class="form-group"><label>Employee</label><input type="text" id="edit_employee" readonly></div>
+            <div class="form-group"><label>Date</label><input type="text" id="edit_date" readonly></div>
+            <div class="form-group"><label>Device</label><input type="text" id="edit_device" readonly></div>
+            <div class="form-group"><label>Check In (HH:MM - 24hr)</label><input type="text" id="edit_checkin" placeholder="09:15"><small>Example: 09:15</small></div>
+            <div class="form-group"><label>Check Out (HH:MM - 24hr)</label><input type="text" id="edit_checkout" placeholder="17:30"><small>Example: 17:30</small></div>
+            <div class="status-preview" id="status_preview">Status will appear here</div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-cancel" onclick="closeModal()">Cancel</button><button class="btn btn-save" onclick="saveEdit()">Save</button></div>
+    </div>
+</div>
+
+<script>
+    let records = [];
+    const today = new Date();
+    const seven = new Date(); seven.setDate(today.getDate()-7);
+    const minDate = new Date('2026-05-01');
+    document.getElementById('from_date').value = (seven < minDate ? minDate : seven).toISOString().split('T')[0];
+    document.getElementById('to_date').value = today.toISOString().split('T')[0];
+    
+    loadData();
+    
+    async function loadData() {
+        const params = new URLSearchParams({
+            from_date: document.getElementById('from_date').value,
+            to_date: document.getElementById('to_date').value,
+            device: document.getElementById('device').value,
+            employee_name: document.getElementById('employee_name').value
+        });
+        
+        try {
+            const response = await fetch(`/get_attendance?${params}`);
+            const data = await response.json();
+            records = data.records;
+            
+            const tbody = document.getElementById('table_body');
+            tbody.innerHTML = '';
+            
+            if (records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">No records found</td></tr>';
+            } else {
+                for (const r of records) {
+                    const row = tbody.insertRow();
+                    if (r.day === 'Sunday') row.className = 'sunday-row';
+                    else if (r.day === 'Saturday') row.className = 'saturday-row';
+                    
+                    const editButton = r.is_sunday ? '<button class="btn" disabled style="opacity:0.5">Edit</button>' : `<button class="btn btn-edit" onclick="openEdit(${r.id}, '${r.check_in}', '${r.check_out}', '${r.original_date}')">Edit</button>`;
+                    
+                    row.innerHTML = `
+                        <td>${r.date}</td>
+                        <td>${r.day}</td>
+                        <td>${r.device}</td>
+                        <td>${r.employee_name}</td>
+                        <td>${r.check_in}</td>
+                        <td>${r.check_out}</td>
+                        <td>${editButton}</td>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading data:', error);
+            document.getElementById('table_body').innerHTML = '<tr><td colspan="7" style="text-align:center;color:red">Error loading data</td></tr>';
+        }
+    }
+    
+    function openEdit(id, currentCheckIn, currentCheckOut, originalDate) {
+        const r = records.find(x => x.id === id);
+        if (r) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('edit_employee').value = r.employee_name;
+            document.getElementById('edit_date').value = r.date;
+            document.getElementById('edit_device').value = r.device;
+            document.getElementById('edit_checkin').value = currentCheckIn !== '---' ? currentCheckIn : '';
+            document.getElementById('edit_checkout').value = currentCheckOut !== '---' ? currentCheckOut : '';
+            document.getElementById('editModal').style.display = 'block';
+            updateStatusPreview();
+        }
+    }
+    
+    function updateStatusPreview() {
+        const checkIn = document.getElementById('edit_checkin').value;
+        const checkOut = document.getElementById('edit_checkout').value;
+        const previewDiv = document.getElementById('status_preview');
+        let msg = '';
+        if (checkIn) msg += `Check In: ${checkIn} `;
+        if (checkOut) msg += `Check Out: ${checkOut} `;
+        if (msg) {
+            previewDiv.innerHTML = `📊 Changes: <strong>${msg}</strong><br>Click Save to update`;
+        } else {
+            previewDiv.innerHTML = `📊 No changes made`;
+        }
+    }
+    
+    document.getElementById('edit_checkin').addEventListener('input', updateStatusPreview);
+    
+    async function saveEdit() {
+        const id = document.getElementById('edit_id').value;
+        const checkin = document.getElementById('edit_checkin').value;
+        const checkout = document.getElementById('edit_checkout').value;
+        
+        const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+        if (checkin && checkin !== '---' && checkin.trim() !== '' && !timeRegex.test(checkin)) {
+            alert('Invalid Check In time. Use HH:MM (e.g., 09:15)');
+            return;
+        }
+        if (checkout && checkout !== '---' && checkout.trim() !== '' && !timeRegex.test(checkout)) {
+            alert('Invalid Check Out time. Use HH:MM (e.g., 17:30)');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/update_record', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: id, check_in: checkin, check_out: checkout})
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert('✅ Record saved!');
+                closeModal();
+                loadData();
+            } else {
+                alert('❌ Error: ' + result.message);
+            }
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
+        }
+    }
+    
+    function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+    function resetFilters() { location.reload(); }
+    function logout() { if(confirm('Logout?')) window.location.href = '/logout'; }
+</script>
+{% endif %}
+</body>
+</html>
